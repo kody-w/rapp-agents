@@ -33,8 +33,8 @@ Actions (perform(action=...)):
   quarantine_list                  list rejected/quarantined frames + events
   selftest                         stdlib-only self-test against the REAL branch feed
 
-Self-test (perform(action='selftest')) proves, against the real twin-pulse-1.0
-branch feed:
+Self-test (perform(action='selftest')) proves, against the real main-branch
+feed:
   (a) full-chain verify passes (JCS golden vector + per-frame sha256 + parent
       chain + Ed25519 signatures) and head_sha == feed head_sha,
   (b) a locally-mutated frame is rejected + quarantined + logged,
@@ -131,10 +131,11 @@ FEED_KIND = "twin.pulse.feed"
 KERNEL_VERSION = "0.6.0"
 N = 64  # feed window: newest N frames in feed.json; frames/ keeps all.
 
-# Default DOG (main once ORDER 1's PR merges) and the real self-test branch.
+# Default DOG feed and the self-test feed. ORDER 1's PR merged into main and the
+# twin-pulse-1.0 branch was deleted post-merge, so both now point at main.
 DEFAULT_FEED_URL = "https://raw.githubusercontent.com/kody-w/twin/main/feed.json"
 SELFTEST_FEED_URL = (
-    "https://raw.githubusercontent.com/kody-w/twin/twin-pulse-1.0/feed.json")
+    "https://raw.githubusercontent.com/kody-w/twin/main/feed.json")
 
 # Pinned trust anchor: the committed pulse pubkey shipped with the twin
 # (keys/pulse.ed25519.pub). Pinning the key with the agent — rather than
@@ -1309,8 +1310,10 @@ class TwinPulseAgent(BasicAgent):
         action = (kwargs.get("action") or "status").strip().lower()
         try:
             if action == "selftest":
-                return json.dumps(run_selftest(quiet=bool(kwargs.get("quiet"))),
-                                  ensure_ascii=False, indent=2)
+                return json.dumps(
+                    run_selftest(quiet=bool(kwargs.get("quiet")),
+                                 feed_url=self._feed_url(kwargs)),
+                    ensure_ascii=False, indent=2)
             if action == "subscribe":
                 return self._do_subscribe(kwargs)
             if action == "assimilate":
@@ -1481,7 +1484,7 @@ class TwinPulseAgent(BasicAgent):
 
 
 # ===========================================================================
-# 9. Self-test (stdlib only) — runs against the REAL twin-pulse-1.0 branch feed.
+# 9. Self-test (stdlib only) — runs against the REAL main-branch feed.
 # ===========================================================================
 def _mutate_frame_payload(frame):
     """Flip a byte in a bones value WITHOUT updating sha256 -> a tamper."""
@@ -1508,12 +1511,13 @@ def _check(results, name, ok, detail):
         results["ok"] = False
 
 
-def run_selftest(quiet=False):
+def run_selftest(quiet=False, feed_url=None):
+    feed_url = feed_url or SELFTEST_FEED_URL
     results = {
         "ok": True,
         "agent": "TwinPulse",
         "spec": "rapp-twin-pulse/1.0",
-        "feed_url": SELFTEST_FEED_URL,
+        "feed_url": feed_url,
         "started": _now_iso(),
         "checks": [],
     }
@@ -1540,10 +1544,10 @@ def run_selftest(quiet=False):
     real_feed = None
     real_twin = None
     try:
-        real_feed, src = fetch_json(SELFTEST_FEED_URL, timeout=FETCH_TIMEOUT)
+        real_feed, src = fetch_json(feed_url, timeout=FETCH_TIMEOUT)
         real_twin = real_feed.get("twin_id")
         god_a = God(real_twin, state_root=os.path.join(tmp, "a"))
-        res_a = assimilate_feed(god_a, real_feed, _base_url(SELFTEST_FEED_URL),
+        res_a = assimilate_feed(god_a, real_feed, _base_url(feed_url),
                                 pubkey)
         n_frames = len(real_feed.get("frames", []))
         signed = sum(1 for f in real_feed.get("frames", []) if f.get("sig"))
@@ -1582,7 +1586,7 @@ def run_selftest(quiet=False):
         frames[-1] = _mutate_frame_payload(frames[-1])
         tampered["frames"] = frames
         god_b = God(real_twin, state_root=os.path.join(tmp, "b"))
-        res_b = assimilate_feed(god_b, tampered, _base_url(SELFTEST_FEED_URL),
+        res_b = assimilate_feed(god_b, tampered, _base_url(feed_url),
                                 pubkey)
         rejected_seqs = [r["seq"] for r in res_b["rejected"]]
         qlist = god_b.list_quarantine()
