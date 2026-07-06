@@ -32,6 +32,7 @@ rapp-agents/
 │   ├── rapp_loader_agent.py the loader — the front door for this stack
 │   ├── scout_agent.py       discover what twins to create
 │   ├── double_down_agent.py russian-doll prompt amplifier
+│   ├── twin_pulse_agent.py  DOG→GOD assimilator (rapp-twin-pulse/1.0)
 │   └── ...
 ├── tests/                   pytest cases (pytest -v from this dir)
 ├── stacks/                  named bundles (JSON): {name, description, agents:[]}
